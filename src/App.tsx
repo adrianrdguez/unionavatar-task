@@ -65,70 +65,102 @@ const App: React.FC = () => {
 
     //Convert Selfie to Base64
     async function convertToBase64(imageUrl: string): Promise<string> {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
-      return new Promise((resolve) => {
-        reader.onloadend = () => {
-          const base64String = reader.result as string;
-          resolve(base64String.split(',')[1]);
-        };
-      });
+      try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+          throw new Error('Error in the network response.');
+        }
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        return new Promise((resolve) => {
+          reader.onloadend = () => {
+            const base64String = reader.result as string;
+            resolve(base64String.split(',')[1]);
+          };
+        });
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          console.error(`Error converting image to base64: ${error.message}`);
+        } else {
+          console.error(`An unknown error occurred while converting image to base64: ${error}`);
+        }
+        throw error;
+      }
     }
 
     // Fetch bodies from API
     async function fetchBodies(): Promise<BodyModel[]> {
-      const response = await fetch(apiUrlBody, {
-        headers: {
-          'Authorization': `Bearer ${bearerToken}`
+      try {
+        const response = await fetch(apiUrlBody, {
+          headers: {
+            'Authorization': `Bearer ${bearerToken}`
+          }
+        });
+        if (!response.ok) {
+          throw new Error('Error in the network response.');
         }
-      });
-      const data = await response.json();
-      return data;
+        const data = await response.json();
+        return data;
+      } catch (error: unknown) {
+        console.error('Error fetching bodies:', (error as Error).message);
+        return [];
+      }
     }
 
     // Call the API to generate the avatar from the selfie image
     async function renderNewAvatar(imageUrl: string) {
-      const bodies = await fetchBodies();
-      const ids = bodies.map((body: BodyModel) => body.id);
-      const randomIndex = Math.floor(Math.random() * ids.length);
-      const randomId = ids[randomIndex];
-      const base64String = await convertToBase64(imageUrl);
+      try {
+        const bodies = await fetchBodies();
+        const ids = bodies.map((body: BodyModel) => body.id);
+        const randomIndex = Math.floor(Math.random() * ids.length);
+        const randomId = ids[randomIndex];
+        const base64String = await convertToBase64(imageUrl);
 
-      setIsLoading(true);
-      const selfieValidation = await fetch(apiUrlHead, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${bearerToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          img: base64String
-        }),
-      });
-      const validation = await selfieValidation.json();
-      setValidationResponse(validation.detail);
+        setIsLoading(true);
+        const selfieValidation = await fetch(apiUrlHead, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${bearerToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            img: base64String
+          }),
+        });
+        // We are letting the user use any type of image.
+        /* if (!selfieValidation.ok) {
+          throw new Error('Error validating selfie image');
+        } */
+        const validation = await selfieValidation.json();
+        setValidationResponse(validation.detail);
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${bearerToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: "test",
-          img: base64String,
-          body_id: randomId
-        }),
-      });
-      const data = await response.json();
-      setIsLoading(false);
-      const loader = new GLTFLoader();
-      loader.load(data.avatar_link, (gltf) => {
-        scene.add(gltf.scene);
-      });
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${bearerToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: "test",
+            img: base64String,
+            body_id: randomId
+          }),
+        });
+        if (!response.ok) {
+          throw new Error('Error creating new avatar');
+        }
+        const data = await response.json();
+        setIsLoading(false);
+        const loader = new GLTFLoader();
+        loader.load(data.avatar_link, (gltf) => {
+          scene.add(gltf.scene);
+        });
+      } catch (error: unknown) {
+        console.error('Error rendering new avatar:', (error as Error).message);
+      }
     }
+
 
     // Add camera controls
     const controls = new OrbitControls(camera, renderer.domElement);
